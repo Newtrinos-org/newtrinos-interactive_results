@@ -1,0 +1,36 @@
+name: Deploy to GitHub Pages
+
+# Publishes the repo as-is to GitHub Pages — no Julia, no Newtrinos.jl checkout,
+# no physics computed in CI. data/results.json and data/residuals.json are
+# precomputed locally (see README.md) and committed to the repo; pushing that
+# commit is what ships new data. The *.jl pipeline scripts are published too
+# (not excluded) since the page itself fetches and displays them in its
+# "How these results were produced" section.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4
