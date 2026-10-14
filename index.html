@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Newtrinos results</title>
+<meta name="description" content="Interactive global-fit results produced with Newtrinos.jl">
+<link rel="icon" type="image/svg+xml" href="./logo.svg">
+<link rel="stylesheet" href="./style.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:opsz,wght@6..72,500;6..72,600&family=Public+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<script src="https://cdn.jsdelivr.net/npm/plotly.js-dist-min@2/plotly.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.2/dist/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/julia.min.js"></script>
+</head>
+<body>
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a class="brand" href="https://newtrinos-org.github.io/">
+      <picture><source srcset="./logo-dark.svg" media="(prefers-color-scheme: dark)"><img class="brand-logo" src="./logo.svg" alt="Newtrinos.jl logo" width="32" height="32"></picture>
+      Newtrinos results
+    </a>
+    <nav class="main-nav">
+      <a href="https://newtrinos-org.github.io/Newtrinos.jl/stable/">Documentation</a>
+      <a href="https://github.com/Newtrinos-org/Newtrinos.jl">GitHub</a>
+      <a href="https://newtrinos-org.github.io/newtrinos-verifications/">Verifications</a>
+      <a href="./" class="active">Results</a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <h1>Global fit results</h1>
+    <p>Interactive Δχ² scans and confidence regions for the neutrino oscillation parameters, computed with
+    <a href="https://github.com/Newtrinos-org/Newtrinos.jl">Newtrinos.jl</a>. Choose a parameter (or a pair), toggle
+    experiments and mass ordering, and inspect confidence levels directly in the browser.</p>
+  </section>
+
+  <p class="source-note" id="source-note">Loading scan results…</p>
+
+  <div class="dashboard">
+    <div class="plot-column">
+      <div class="panel plot-panel">
+        <div id="plot"></div>
+      </div>
+      <div class="export-row">
+        <button class="btn" id="download-pdf">⬇ Download plot (PDF)</button>
+        <button class="btn" id="download-csv">⬇ Download table (CSV)</button>
+        <button class="btn" id="download-json">⬇ Download data (JSON)</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="control-group">
+        <h3>Axes</h3>
+        <div class="field">
+          <label for="param-x">Parameter (x)</label>
+          <select id="param-x"></select>
+        </div>
+        <div class="field">
+          <label for="param-y">Parameter (y)</label>
+          <select id="param-y"></select>
+        </div>
+      </div>
+
+      <hr class="sep">
+
+      <div class="control-group">
+        <h3>Confidence level</h3>
+        <div class="field">
+          <label>Level: <span class="cl-value" id="cl-value"></span></label>
+          <input type="range" id="cl-slider" min="0" max="4" step="1" value="0">
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="cl-show-all"><label for="cl-show-all">Show all confidence levels</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="show-bestfit" checked><label for="show-bestfit">Show best-fit ★</label>
+        </div>
+      </div>
+
+      <hr class="sep">
+
+      <div class="control-group">
+        <h3>Datasets</h3>
+        <div id="dataset-checkboxes"></div>
+      </div>
+
+      <hr class="sep">
+
+      <div class="control-group">
+        <h3>Mass ordering</h3>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ord-no" checked><label for="ord-no">Normal (NO) — solid</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="ord-io" checked><label for="ord-io">Inverted (IO) — dashed</label>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="table-wrap">
+    <div class="table-scroll">
+      <table class="results-table" id="summary-table">
+        <thead></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+
+  <section class="residuals-section" id="residuals-section" hidden>
+    <h2>Pulls: data vs. best-fit prediction</h2>
+    <p class="muted small" id="residuals-note"></p>
+    <div class="panel plot-panel">
+      <div id="residuals-plot"></div>
+    </div>
+  </section>
+
+  <section class="source-section">
+    <h2>How these results were produced</h2>
+    <p>Every scan and fit on this page comes directly from <a href="https://github.com/Newtrinos-org/Newtrinos.jl">Newtrinos.jl</a>,
+    run at a pinned commit, with no manual post-processing of the physics. The scripts below are the entire
+    pipeline: one runs the likelihood scans and saves them, one converts that output for the plots above, and one
+    runs a real profiled best-fit (nuisance parameters optimized, not fixed) to produce the pulls below.</p>
+
+    <div class="source-file">
+      <h3>compute_results.jl — runs the Newtrinos.jl scans</h3>
+      <div class="code">
+        <button class="copy" data-copy="code-compute">Copy</button>
+        <pre><code id="code-compute" class="language-julia"></code></pre>
+      </div>
+    </div>
+
+    <div class="source-file">
+      <h3>export_results.jl — converts the scan output to results.json</h3>
+      <div class="code">
+        <button class="copy" data-copy="code-export">Copy</button>
+        <pre><code id="code-export" class="language-julia"></code></pre>
+      </div>
+    </div>
+
+    <div class="source-file">
+      <h3>export_residuals.jl — runs a profiled best-fit and exports the per-bin pulls</h3>
+      <div class="code">
+        <button class="copy" data-copy="code-residuals">Copy</button>
+        <pre><code id="code-residuals" class="language-julia"></code></pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer class="site-footer">
+  <div class="wrap">Newtrinos.jl results — generated from precomputed likelihood scans. See
+  <a href="https://github.com/Newtrinos-org/Newtrinos.jl">Newtrinos.jl</a> for the analysis code.</div>
+</footer>
+
+<script src="./app.js"></script>
+</body>
+</html>
