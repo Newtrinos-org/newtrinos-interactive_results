@@ -41,4 +41,26 @@ predicted, and pull values.
 ### Used Code for result production
 
 At the bottom of the page one can look into the source code, how the results were produced 
-with Newtrinos.jl. This makes it very easy to reconstruct the shown results. 
+with Newtrinos.jl. This makes it very easy to reconstruct the shown results.
+
+## Updating the data
+
+The site is static: `data/results.json` and `data/residuals.json` are committed to the repo,
+not computed on the fly. To refresh them against a given Newtrinos.jl checkout:
+
+```
+NEWTRINOS_JL_PATH=/path/to/Newtrinos.jl julia compute_results.jl        # writes results.jld2
+julia --project=. export_results.jl                                    # writes data/results.json
+NEWTRINOS_JL_PATH=/path/to/Newtrinos.jl julia export_residuals.jl       # writes data/residuals.json
+```
+
+`compute_results.jl` runs the actual Newtrinos.jl likelihood scans and can take a long time; the two
+`export_*.jl` scripts just reshape its output and are fast. Commit the regenerated
+`data/*.json` and push — that's what the deploy workflow picks up.
+
+## Deployment
+
+`.github/workflows/pages.yml` publishes the repo to GitHub Pages on every push to `main` (or
+via manual dispatch). It does not run Julia or compute anything — it only copies the
+repo's current files, including whatever `data/*.json` is committed, so a deploy only ever
+reflects data you've regenerated and committed locally first. 
