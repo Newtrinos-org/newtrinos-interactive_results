@@ -11,6 +11,10 @@ NEWTRINOS_JL_PATH must point at a local clone/checkout of Newtrinos.jl (its
 Project.toml is activated to run the scans) — no path is assumed, since this
 repo doesn't contain or vendor Newtrinos.jl itself.
 
+The set of experiments to scan comes from experiments.toml, not from this
+file — to add a Newtrinos.jl experiment module to the site, add an entry
+there (name/module/category), nothing here needs editing.
+
 export_results.jl and export_residuals.jl load results.jld2 and only need
 plain data (Dict/NamedTuple/Vector) — they don't depend on Newtrinos.jl's own
 internal types, only on calling Newtrinos.bestfit/forward_model with it.
@@ -24,6 +28,11 @@ Pkg.activate(ENV["NEWTRINOS_JL_PATH"])
 using Newtrinos
 using OrderedCollections
 using JLD2
+using TOML
+
+# Single source of truth for which experiments this site uses — see experiments.toml's own
+# header comment. Each entry becomes one experiment_defs entry and one field of "Combined".
+experiments_config = TOML.parsefile(joinpath(@__DIR__, "experiments.toml"))["experiment"]
 
 #configure physics
 #default settings
@@ -56,17 +65,12 @@ physics_IO =(;osc=osc_model_IO,
             xsec = Newtrinos.xsec.configure(),
 )
 
-#mapping of experiments to their Newtrinos experiment module calls
+#mapping of experiments to their Newtrinos experiment module calls, generated from
+#experiments.toml — add a new experiment there, not here.
 
 experiment_defs = Dict(
-    "Daya Bay" => phys -> Newtrinos.dayabay.configure(phys),
-    "MINOS"    => phys -> Newtrinos.minos.configure(phys),
-    "KamLAND"  => phys -> Newtrinos.kamland.configure(phys),
-    "IceCube Deepcore" => phys -> Newtrinos.deepcore.configure(phys),
-    #"KM3NeT/ORCA" => phys -> Newtrinos.orca.configure(phys),
-    #"Super-K" => phys -> Newtrinos.super_k.configure(phys),
-    #"JUNO (simulation)" => phys -> Newtrinos.juno.configure(phys)
-    # To add a new experiment, just add one line here
+    entry["name"] => phys -> getfield(Newtrinos, Symbol(entry["module"])).configure(phys)
+    for entry in experiments_config
 )
 
 # Also define combined experiment sets
@@ -75,16 +79,22 @@ for (name, func) in experiment_defs
     experiment_sets[name] = phys -> NamedTuple{(Symbol(lowercase(replace(name, " " => ""))),)}((func(phys),))
 end
 
-# Add the combined fit definition
-experiment_sets["Combined"] = phys -> (;
-    dayabay = Newtrinos.dayabay.configure(phys),
-    minos   = Newtrinos.minos.configure(phys),
-    kamland = Newtrinos.kamland.configure(phys),
-    deepcore = Newtrinos.deepcore.configure(phys),
-    #orca = Newtrinos.orca.configure(phys),
-    #super_k = Newtrinos.super_k.configure(phys),
-    #juno = Newtrinos.juno.configure(phys)
+# Add the combined fit definition: every configured experiment, keyed by its module name.
+experiment_sets["Combined"] = phys -> NamedTuple(
+    Symbol(entry["module"]) => getfield(Newtrinos, Symbol(entry["module"])).configure(phys)
+    for entry in experiments_config
 )
+
+# Also add one combined fit per category (every experiment in that category, jointly) — e.g.
+# "Combined (reactor)" joins Daya Bay+KamLAND+JUNO+TAO. Category pages show this alongside
+# their individual-experiment scans, same pattern as the site-wide "Combined" above.
+for category in unique(entry["category"] for entry in experiments_config)
+    cat_entries = filter(entry -> entry["category"] == category, experiments_config)
+    experiment_sets["Combined ($category)"] = phys -> NamedTuple(
+        Symbol(entry["module"]) => getfield(Newtrinos, Symbol(entry["module"])).configure(phys)
+        for entry in cat_entries
+    )
+end
 
 #Confidence-level definitions shared by the 1D scan and 2D contour plots
 #(standard χ² quantiles: 1 dof for the 1D Δχ² curves, 2 dof for the pairwise contours)

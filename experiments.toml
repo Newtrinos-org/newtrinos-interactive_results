@@ -1,0 +1,67 @@
+# Single source of truth for which Newtrinos.jl experiment modules this site uses.
+#
+# Read by compute_results.jl (builds experiment_defs / the "Combined" set from this list)
+# and by app.js (knows which experiment names belong to which category page). To add a
+# future Newtrinos.jl experiment module to the site, add one [[experiment]] entry here —
+# no other file needs editing.
+#
+# - name: display name, must match what compute_results.jl/export_results.jl store as the
+#   experiment's key in results.jld2/results.json (so this IS that key).
+# - module: the Newtrinos.jl submodule name, i.e. `Newtrinos.<module>.configure`.
+# - category: one of "reactor", "atmospheric", "accelerator" (used by the category pages'
+#   PAGE_CATEGORY filter; "solar" has no entries yet since no solar module exists).
+
+[[experiment]]
+name = "Daya Bay"
+module = "dayabay"
+category = "reactor"
+
+[[experiment]]
+name = "KamLAND"
+module = "kamland"
+category = "reactor"
+
+# JUNO and TAO are NOT included: both are simulation-only — Newtrinos.jl's modules for them
+# have no real observed data at all (no assets.observed field), so Newtrinos.generate_likelihood
+# can't build a likelihood for them without substituting Asimov (simulated/expected) data —
+# which would make any scan including them a sensitivity projection, not a real-data fit like
+# every other experiment on this site. Revisit once there's a clear way to present that
+# distinction (e.g. a separate "projected sensitivity" page/section).
+# [[experiment]]
+# name = "JUNO"
+# module = "juno"
+# category = "reactor"
+#
+# [[experiment]]
+# name = "TAO"
+# module = "tao"
+# category = "reactor"
+
+[[experiment]]
+name = "MINOS"
+module = "minos"
+category = "accelerator"
+
+[[experiment]]
+name = "IceCube Deepcore"
+module = "deepcore"
+category = "atmospheric"
+
+[[experiment]]
+name = "KM3NeT/ORCA"
+module = "orca"
+category = "atmospheric"
+
+# Super-K is NOT included: its module requires a different cross-section model
+# (Newtrinos.xsec.Differential_H2O, water-Cherenkov-specific) than every other experiment
+# here (which use the default SimpleScaling), and compute_results.jl currently builds one
+# shared physics object per ordering for every experiment in a set. Enabling Super-K needs
+# either a per-experiment physics/xsec override mechanism here, or an upstream Newtrinos.jl
+# fix — confirmed via a real run that fails with:
+#   MethodError: no method matching scale(::Vector{Float64}, ::Symbol, ::Symbol, ::Bool, ::NamedTuple)
+#   in Newtrinos.super_k's calc_weights (super_k.jl:159), since physics.xsec.scale there
+#   expects Differential_H2O's 5-argument signature but got SimpleScaling's 3-argument one.
+# [[experiment]]
+# name = "Super-K"
+# module = "super_k"
+# category = "atmospheric"

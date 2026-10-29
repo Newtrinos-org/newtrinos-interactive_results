@@ -3,15 +3,48 @@
 // parameter x/y, dataset toggles, NO/IO toggles, CL slider + "show all", best-fit markers,
 // 1D/2D profile switching, and PDF/CSV/JSON export.
 
+// Keyed by the longest matching prefix actually used — both the dataset/results.json name
+// (e.g. "IceCube Deepcore") and the residuals series label prefix (e.g. "DeepCore (...)",
+// "ORCA (...)") need their own entry, since those two naming schemes don't always agree.
 const COLORS = {
   "Daya Bay": "#2f5fd0",
   "MINOS": "#d08a2f",
   "KamLAND": "#1f8a4c",
   "IceCube Deepcore": "#c9a227",
+  "DeepCore": "#c9a227",
+  "KM3NeT/ORCA": "#6a3fb5",
+  "ORCA": "#6a3fb5",
+  "Super-K": "#1f9e8f",
+  "JUNO": "#c4588e",
+  "TAO": "#8a5a2f",
   "Combined": "#c0392b",
 };
 const DEFAULT_COLOR = "#7a8494";
 
+// Resolves relative to the page's own location by default; category pages set
+// PAGE_DATA_BASE (e.g. "../../") since they live two directories below the repo root.
+const DATA_BASE = typeof PAGE_DATA_BASE !== "undefined" ? PAGE_DATA_BASE : "./";
+
+// Minimal reader for experiments.toml's flat [[experiment]] array-of-tables shape — not a
+// general TOML parser, just enough for `key = "value"` lines grouped under [[experiment]].
+function parseExperimentsToml(text) {
+  const entries = [];
+  let current = null;
+  for (const rawLine of text.split("\n")) {
+    const line = rawLine.split("#")[0].trim();
+    if (!line) continue;
+    if (line === "[[experiment]]") {
+      current = {};
+      entries.push(current);
+      continue;
+    }
+    const m = line.match(/^(\w+)\s*=\s*"(.*)"$/);
+    if (m && current) current[m[1]] = m[2];
+  }
+  return entries;
+}
+
+let EXPERIMENTS_CONFIG = [];
 let DATA = null;
 const state = {
   px: null,
@@ -25,15 +58,37 @@ const state = {
 };
 
 async function main() {
-  const res = await fetch("./data/results.json");
-  DATA = await res.json();
+  const [resultsRes, tomlRes] = await Promise.all([
+    fetch(`${DATA_BASE}data/results.json`),
+    fetch(`${DATA_BASE}experiments.toml`),
+  ]);
+  DATA = await resultsRes.json();
+  EXPERIMENTS_CONFIG = parseExperimentsToml(await tomlRes.text());
 
-  // "Combined" first, then the individual experiments in whatever order they were given.
-  DATA.experiments.sort((a, b) => (a === "Combined" ? -1 : b === "Combined" ? 1 : 0));
+  // Category pages (PAGE_CATEGORY set before this script loads) only ever show the
+  // experiments in that category, plus that category's own joint fit ("Combined
+  // (reactor)", etc. — computed by compute_results.jl alongside the site-wide
+  // "Combined"). The combined dashboard (no PAGE_CATEGORY) shows every individual
+  // experiment plus the complete all-experiments "Combined" fit — but not the
+  // per-category joint fits ("Combined (reactor)" etc.), since those each have their own
+  // dedicated page now and would just be redundant here.
+  if (typeof PAGE_CATEGORY !== "undefined") {
+    const allowed = new Set(EXPERIMENTS_CONFIG.filter((e) => e.category === PAGE_CATEGORY).map((e) => e.name));
+    allowed.add(`Combined (${PAGE_CATEGORY})`);
+    DATA.experiments = DATA.experiments.filter((name) => allowed.has(name));
+  } else {
+    DATA.experiments = DATA.experiments.filter((name) => !/^Combined \(/.test(name));
+  }
+
+  // Any "Combined"/"Combined (<category>)" entry first, then the individual experiments
+  // in whatever order they were given.
+  const isCombined = (name) => name === "Combined" || name.startsWith("Combined (");
+  DATA.experiments.sort((a, b) => (isCombined(a) ? -1 : isCombined(b) ? 1 : 0));
 
   state.px = DATA.scan_params[0];
   // Show only the combined fit by default; individual experiments are opt-in.
-  for (const name of DATA.experiments) state.datasets[name] = name === "Combined";
+  const hasCombined = DATA.experiments.some(isCombined);
+  for (const name of DATA.experiments) state.datasets[name] = hasCombined ? isCombined(name) : true;
 
   buildControls();
   render();
@@ -46,7 +101,7 @@ let RESIDUALS = null;
 
 async function loadResiduals() {
   try {
-    const res = await fetch("./data/residuals.json");
+    const res = await fetch(`${DATA_BASE}data/residuals.json`);
     if (!res.ok) return; // no residuals.json yet — section stays hidden
     RESIDUALS = await res.json();
     document.getElementById("residuals-section").hidden = false;
@@ -56,11 +111,14 @@ async function loadResiduals() {
   }
 }
 
-// Color per series: match on the experiment name prefix (e.g. "MINOS (CC)" -> MINOS's color).
-function residualColor(label) {
+// Color for any experiment/dataset name, matched by prefix so "Combined (reactor)" etc.
+// resolve to the same color as "Combined", and residual series like "MINOS (CC)" resolve
+// to MINOS's color.
+function experimentColor(label) {
   const known = Object.keys(COLORS).find((name) => label.startsWith(name));
   return known ? COLORS[known] : DEFAULT_COLOR;
 }
+const residualColor = experimentColor;
 
 // Marker shape per sub-channel, so e.g. MINOS (CC) vs MINOS (NC) or DeepCore (Cascades) vs
 // (Tracks) stay distinguishable even though they share one color. Falls back to a circle
@@ -70,7 +128,17 @@ const CHANNEL_SYMBOLS = {
   "NC": "diamond",
   "Cascades": "circle",
   "Tracks": "diamond",
+  "high-purity tracks": "diamond",
+  "low-purity tracks": "triangle-up",
+  "showers": "circle",
 };
+// Plotly's triangle glyphs read visually smaller than circles/diamonds at the same nominal
+// marker size, so triangle-using symbols get a size bump to look consistent with the rest.
+const SYMBOL_SIZE_BOOST = { "triangle-up": 1.4, "triangle-down": 1.4, "triangle-left": 1.4, "triangle-right": 1.4 };
+function residualMarkerSize(symbol, base = 7) {
+  return base * (SYMBOL_SIZE_BOOST[symbol] || 1);
+}
+
 function residualSymbol(label) {
   const m = label.match(/\(([^)]+)\)\s*$/);
   if (!m) return "circle";
@@ -78,20 +146,28 @@ function residualSymbol(label) {
 }
 
 // Pick the residuals entry matching the currently-selected scan (same px/py/ordering
-// logic as the scan plot above), so the pull plot always shows residuals at THAT scan's
-// own best-fit point. With both NO and IO checked, NO is shown (both can't fit on one
-// plot at once); the note below the heading says which ordering is in use.
+// logic as the scan plot above) AND the combined set this page is scoped to ("Combined"
+// on the unrestricted dashboard, "Combined (<category>)" on a category page) — so the
+// pull plot always shows residuals at THAT scan's own best-fit point, for the same
+// experiments this page's scan/table are already showing. With both NO and IO checked,
+// NO is shown (both can't fit on one plot at once); the note below the heading says which
+// ordering is in use.
+function currentResidualsSetName() {
+  return typeof PAGE_CATEGORY !== "undefined" ? `Combined (${PAGE_CATEGORY})` : "Combined";
+}
+
 function currentResidualsEntry() {
   if (!RESIDUALS) return null;
   const ordering = state.showNO ? "NO" : state.showIO ? "IO" : null;
   if (!ordering) return null;
+  const setName = currentResidualsSetName();
 
   if (isOneD()) {
-    return { entry: RESIDUALS.entries[`1d:${state.px}:${ordering}`], ordering };
+    return { entry: RESIDUALS.entries[`${setName}:1d:${state.px}:${ordering}`], ordering };
   }
   const py = state.py;
-  const direct = RESIDUALS.entries[`2d:${state.px}|${py}:${ordering}`];
-  const swapped = RESIDUALS.entries[`2d:${py}|${state.px}:${ordering}`];
+  const direct = RESIDUALS.entries[`${setName}:2d:${state.px}|${py}:${ordering}`];
+  const swapped = RESIDUALS.entries[`${setName}:2d:${py}|${state.px}:${ordering}`];
   return { entry: direct || swapped, ordering };
 }
 
@@ -113,6 +189,8 @@ function renderResiduals() {
   const shapes = [];
   let cursor = 0; // running bin-index offset so every series gets its own x-slot
 
+  // No client-side filtering needed: each entry's series are already scoped to exactly the
+  // experiments in this page's combined set (see export_residuals.jl's per-set computation).
   for (const series of entry.series) {
     const color = residualColor(series.label);
     const symbol = residualSymbol(series.label);
@@ -131,7 +209,7 @@ function renderResiduals() {
     const pulls = series.observed.map((obs, i) => (obs - series.predicted[i]) / series.sigma[i]);
     traces.push({
       x: xs, y: pulls, mode: "markers", name: series.label,
-      marker: { color, symbol, size: 7 },
+      marker: { color, symbol, size: residualMarkerSize(symbol) },
       hovertext: series.x.map((x, i) => {
         // A non-empty bin_desc (e.g. DeepCore's flattened (energy, cosθ) bins) is a more
         // meaningful label than a single-axis bin range; prefer it when present.
@@ -187,9 +265,9 @@ function renderResiduals() {
 
 async function loadSourceFiles() {
   const files = [
-    { url: "./compute_results.jl", elId: "code-compute" },
-    { url: "./export_results.jl", elId: "code-export" },
-    { url: "./export_residuals.jl", elId: "code-residuals" },
+    { url: `${DATA_BASE}compute_results.jl`, elId: "code-compute" },
+    { url: `${DATA_BASE}export_results.jl`, elId: "code-export" },
+    { url: `${DATA_BASE}export_residuals.jl`, elId: "code-residuals" },
   ];
   for (const { url, elId } of files) {
     const el = document.getElementById(elId);
@@ -367,7 +445,7 @@ function renderPlot() {
 
   for (const name of DATA.experiments) {
     if (!state.datasets[name]) continue;
-    const color = COLORS[name] || DEFAULT_COLOR;
+    const color = experimentColor(name);
     for (const [ordering, dash, enabled] of [["NO", "solid", state.showNO], ["IO", "dash", state.showIO]]) {
       if (!enabled) continue;
       const expData = DATA.results[name][ordering];

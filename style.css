@@ -149,3 +149,21 @@ table.results-table { border-collapse: collapse; width: 100%; font-size: 0.85rem
 :root[data-theme="dark"] .hljs-number, :root[data-theme="dark"] .hljs-symbol { color: #f2b177; }
 :root[data-theme="dark"] .hljs-comment, :root[data-theme="dark"] .hljs-meta { color: #8792a3; }
 :root[data-theme="dark"] .hljs-title, :root[data-theme="dark"] .hljs-function { color: #9db7ff; }
+
+/* ---- overview/landing cards (root index.html), "coming soon" placeholder pages ---- */
+.cat-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 0.9rem; margin: 1.2rem 0; }
+.cat-tile {
+  display: flex; flex-direction: column; gap: 0.35rem; padding: 1rem 1.1rem;
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); color: var(--text);
+}
+a.cat-tile:hover { border-color: var(--accent); text-decoration: none; }
+.cat-tile h3 { margin: 0; font-family: var(--font-display); font-size: 1.2rem; font-weight: 600; }
+.cat-tile p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+.cat-tile .go { color: var(--accent); font-weight: 500; font-size: 0.85rem; margin-top: 0.2rem; }
+.cat-tile.soon { border-style: dashed; }
+.cat-tile.soon .go { color: var(--muted); }
+
+.coming-soon-notice {
+  margin: 1.5rem 0; padding: 0.9rem 1.1rem; border-left: 3px solid var(--warn);
+  background: var(--warn-soft); border-radius: 0 var(--radius) var(--radius) 0; max-width: 60ch;
+}
